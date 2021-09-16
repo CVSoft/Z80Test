@@ -1,4 +1,4 @@
-.define TI84PCSE
+.define TI8X
 
 .define VERSION 5
 ; make it run on many calculators
@@ -416,7 +416,7 @@ TestInAKillsVRAMPointer:
  .endif
  ld hl,$0000
  call SetCursorPosition
- ld hl,plotSScreen
+ ld hl,plotSScreen+384
  push hl
  ld b,64
  call ReadStorageFromLCD
@@ -438,12 +438,12 @@ TestInAKillsVRAMPointer:
 
 TestValidColumns:
  ; Runs with interrupts disabled!
- ; copy one column of counter to plotSScreen, then a column of blanks to plotSScreen+64
+ ; copy one column of counter to plotSScreen+384, then a column of blanks to plotSScreen+448
  ; TODO make this use the upper half of appBackupScreen
  .define USES_PLOT
  ld a,0
  ld b,64
- ld hl,plotSScreen
+ ld hl,plotSScreen+384
  push hl
   M_CounterLoop:
    ld (hl),a
@@ -586,12 +586,12 @@ TestColumn:
  ld l,0
  push hl
   call SetCursorPosition
-  ld hl,plotSScreen
+  ld hl,plotSScreen+384
   ld b,64
   call WriteStorageToLCD
  pop hl
  call SetCursorPosition
- ld hl,plotSScreen+128
+ ld hl,plotSScreen+512
  push hl
   ld b,64
   call ReadStorageFromLCD
