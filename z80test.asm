@@ -1,6 +1,6 @@
 .define TI8X
 
-.define VERSION 5
+.define VERSION 6
 ; make it run on many calculators
 .ifdef TI73 ; very broken; Brass probably needs an external packager
  .echoln "Building for TI-73 Nostub"
@@ -367,6 +367,25 @@ TestLCDFunctions:
  call PutAInResults
 .endif
 
+TestPort14MirrorsPort04:
+ ; this is really only meaningful on the 83+
+ ; it differentiates the 738X from the 6SI837
+ ei
+ ld c,$04
+ in a,(c)
+ ld e,a
+ ld c,$14
+; in a,(c)
+ in a,(c)
+ cp e
+; Call PutAInResults
+ ; all of the below code should be unnecessary. but why not?
+ ld a,1
+ jr z,TP14MP04_Pass
+ xor a
+ TP14MP04_Pass:
+ call PutAInResults
+
 DoneExecuting:
  .ifdef USES_PLOT
   set graphDraw,(iy+graphFlags)
@@ -375,6 +394,7 @@ DoneExecuting:
 
 ;=============================================================================
 ; Subtests
+;=============================================================================
 
 TestBit35:
  ; put bits 3 and 5 of flags in known state
@@ -696,16 +716,16 @@ ListDontDelete:
    push hl ; preserve results pointer?
     push de ; preserve list element pointer, we use this first
      ld a,(hl)
-     .ifndef TI82
-      bcall(_setxxop1)
-     .else
+;     .ifndef TI82
+;      bcall(_setxxop1) ; 0-99 is just so limiting
+;     .else
       push hl
        ld h,0
-       ld a,l
+       ld l,a
        bcall(_setxxxxop2)
        bcall(_op2toop1)
       pop hl
-     .endif
+;     .endif
     pop de
      bcall(_movfrop1) ; put OP1 in list, inc de by 9
    pop hl
