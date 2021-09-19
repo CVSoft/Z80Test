@@ -458,9 +458,9 @@ TestInAKillsVRAMPointer:
 
 TestValidColumns:
  ; Runs with interrupts disabled!
- ; copy one column of counter to plotSScreen+384, then a column of blanks to plotSScreen+448
  ; TODO make this use the upper half of appBackupScreen
  .define USES_PLOT
+ ; copy one column of counter to plotSScreen+384, then a column of blanks to plotSScreen+448
  ld a,0
  ld b,64
  ld hl,plotSScreen+384
@@ -486,7 +486,7 @@ TestValidColumns:
   jr z,M_TestExit
   inc b
   ld a,b
-  cp $20
+  cp $20 ; if we are going to go beyond command $3F
   jr z,M_TestExit
   jr M_TestLoop
  M_TestExit:
@@ -626,9 +626,15 @@ TestColumn:
   inc c
   djnz TC_CheckLoop
  ld a,1
- ret
+ jr TC_Exit
  TC_Fail:
  xor a
+ TC_Exit:
+ push af
+  ld hl,plotSScreen+448
+  ld b,64
+  call WriteStorageToLCD
+ pop af
  ret
 
 .endif
@@ -716,16 +722,12 @@ ListDontDelete:
    push hl ; preserve results pointer?
     push de ; preserve list element pointer, we use this first
      ld a,(hl)
-;     .ifndef TI82
-;      bcall(_setxxop1) ; 0-99 is just so limiting
-;     .else
       push hl
        ld h,0
        ld l,a
        bcall(_setxxxxop2)
        bcall(_op2toop1)
       pop hl
-;     .endif
     pop de
      bcall(_movfrop1) ; put OP1 in list, inc de by 9
    pop hl
@@ -733,12 +735,7 @@ ListDontDelete:
   pop bc
   djnz ListSetValues
 ListExit:
- ; if we didn't use appBackupScreen, mark the graph memory as dirty
- .ifdef TI83
-  set graphdraw,(iy+graphflags)
- .elseifdef TI86
-  set graphdraw,(iy+graphflags)
- .endif
+ ; this used to set graphflags on certain platforms, but we do that later now
  ret
 ListEmpty: ; should never be called ; WILL KILL VAT ON 86 RIGHT NOW
  ld a,0
