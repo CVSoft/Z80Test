@@ -1,6 +1,6 @@
 .define TI8X
 
-.define VERSION 6
+.define VERSION 7
 ; make it run on many calculators
 .ifdef TI73 ; very broken; Brass probably needs an external packager
  .echoln "Building for TI-73 Nostub"
@@ -109,7 +109,7 @@ TestSLL: ;L1(2)
  call DispMsg
 
 TestInternalCarry: ;L1(3)
- ld a,0
+ xor a
  dec a
  daa
  cp $99 ; Z180 should be $F9, DAA has an internal carry issue
@@ -233,7 +233,7 @@ TestUndocNeg: ;L1(10)
 
 TestIFFBug: ;L1(11)
  ei
- ld a,0
+ xor a
  ld bc,0
  ld d,$17
  Loop:
@@ -245,7 +245,7 @@ TestIFFBug: ;L1(11)
   dec d
   jp nz,Loop
  TestIFFBugFail:
- ld a,0
+ xor a
  call PutAInResults
  jr TestASICVersion
  TestIFFBugPass:
@@ -265,71 +265,33 @@ TestASICVersion: ;L1(12)
   TestASICVersionPass:
   in a,($15)
   TestASICVersionFail:
-  ld (Result),a
   call PutAInResults
  .else
-  ld a,0
-  ld (Result),a
+  xor a
   call PutAInResults
  .endif
 
-TestLCDBusyDelay:
- ; try to measure (roughly) how long LCD delay is
- ; expect ~ 60cycle on old HW and ~ 4cycle on new HW
- .ifdef TI86
-  ld a,1
-  ld (Result),a
+TestLCDDelayMaximum:
+ ; run the LCD delay test (some number, currently 20) times, and take the longest
+ .ifdef T6A04
+  ld bc,$1400 ; 20 into b, 0 into c
+  TestLCDDelayMaximum_Loop:
+   push bc
+    call TestLCDBusyDelay
+   pop bc
+   cp c ; if just-run test took longer or same time, no carry flag
+   jr nc,TestLCDDelayMaximum_LongerDelayFound
+   djnz TestLCDDelayMaximum_Loop
+   jr TestLCDDelayMaximum_Exit ; exit main loop
+   TestLCDDelayMaximum_LongerDelayFound:
+   ld c,a
+   djnz TestLCDDelayMaximum_Loop
+  TestLCDDelayMaximum_Exit:
+  ld a,c
   call PutAInResults
- .elseifdef TI84PCSE ; might be worth testing *something*
-  ; maybe this?
-  ; xor a
-  ; out ($10),a
-  ; out ($10),a (16-bit?)
-  ; ld a,$11
-  ; in h,(a)
-  ; in l,(a)
-  ; ld de,$9335
-  ; bcall(_cphlde)
-  ; call DispMsg
-  ld a,1
-  ld (Result),a
+ .else
+  call TestLCDBusyDelay
   call PutAInResults
- .else ; port-mapped grayscale display
- ; this goes from 1 to 2 at 62 cycles
-  ; make sure this bit isn't permanently high for some silly reason
-  call lcd_busy
-  in a,($10)
-  rla
-  jr c,TestLCDBusyDelayLoopInfiniteLoopCatcher
-  ld b,0
-  ; do something that takes time to process
-  call lcd_busy
-  ld a,$02
-  di
-  out ($10),a
-  TestLCDBusyDelayLoop:
-   in a,($10)
-   inc b
-   rla
-   jr c,TestLCDBusyDelayLoop
-   jp pe,TestLCDBusyDelayLoopExit ; overflow is a real risk now lol
-  TestLCDBusyDelayLoopExit:
-  ei
-  dec b ; only count complete loops
-  ; safely wait until LCD is ready, then put old contrast value back
-  call lcd_busy
-  ld a,$03
-  out ($10),a
-  call lcd_busy
-  ld a,b
-  call PutAInResults
-  jr TestLCDBusyDelayLoopDone ; next block
-
-  TestLCDBusyDelayLoopInfiniteLoopCatcher:
-   ld a,$0FF
-   call PutAInResults
-  TestLCDBusyDelayLoopDone:
-  ; delay is 31*r-50 <= true < 31*r-19 cycles
  .endif
 
 .ifdef T6A04
@@ -398,9 +360,17 @@ DoneExecuting:
 
 TestBit35:
  ; put bits 3 and 5 of flags in known state
+ ; inputs  : f
+ ; destroys: af
+ ; outputs : a contains copy of f after attempting to indirectly set bits 3 
+ ;           and 5 of f
  ld a,$FF
  cp $aa
 FintoA:
+ ; copy flag register to accumulator
+ ; inputs  : f
+ ; destroys: af
+ ; outputs : a contains copy of f
  push bc
  push af
  pop bc
@@ -412,9 +382,75 @@ FintoA:
 ; LCD subtests
 ; ------
 
+TestLCDBusyDelay:
+ ; try to measure (roughly) how long LCD delay is
+ ; expect ~ 60cycle on old HW and ~ 4cycle on new HW
+ ; TI-86: always returns 1
+ ; TI-84 Plus C SE: always returns 1 for now, may test for ILI9335 
+ ;                  presence in the future
+ ; inputs  : LCD should be enabled, but it doesn't matter
+ ; destroys: af bc
+ ; outputs : a contains number of loops needed, 255 if fails
+ .ifdef TI86
+  ld a,1
+  ret
+ .elseifdef TI84PCSE ; might be worth testing *something*
+  ; maybe this?
+  ; xor a
+  ; out ($10),a
+  ; out ($10),a (16-bit?)
+  ; ld a,$11
+  ; in h,(a)
+  ; in l,(a)
+  ; ld de,$9335
+  ; bcall(_cphlde)
+  ; call DispMsg
+  ld a,1
+;  ld (Result),a
+  ret
+ .else ; port-mapped grayscale display
+ ; this goes from 1 to 2 at 62 cycles
+  ; make sure this bit isn't permanently high for some silly reason
+  call lcd_busy
+  in a,($10)
+  rla
+  jr c,TestLCDBusyDelayLoopInfiniteLoopCatcher
+  ld b,0
+  ; do something that takes time to process
+  call lcd_busy
+  ld a,$80
+  di
+  out ($10),a
+  TestLCDBusyDelayLoop:
+   in a,($10)
+   inc b
+   rla
+   jr c,TestLCDBusyDelayLoop
+   jp pe,TestLCDBusyDelayLoopExit ; overflow is a real risk now lol
+  TestLCDBusyDelayLoopExit:
+  ei
+  dec b ; only count complete loops
+  ; safely wait until LCD is ready, then put old contrast value back
+  call lcd_busy
+  ld a,$90
+  out ($10),a
+  call lcd_busy
+  ld a,b
+  ret ; jr TestLCDBusyDelayLoopDone
+  TestLCDBusyDelayLoopInfiniteLoopCatcher:
+   ld a,$0FF
+  TestLCDBusyDelayLoopDone:
+   ret
+
+ .endif
+
 .ifdef T6A04
 
 TestInAKillsVRAMPointer:
+ ; check if reading port $10 kills the VRAM pointer location
+ ; inputs  : none
+ ; destroys: af bc hl plotSScreen[384:448]
+ ; outputs : a=1 if pointer was moved unexpectedly, otherwise a=0
  .define USES_PLOT
  ; Runs with interrupts disabled!
  ld hl,$0000
@@ -458,10 +494,13 @@ TestInAKillsVRAMPointer:
 
 TestValidColumns:
  ; Runs with interrupts disabled!
- ; TODO make this use the upper half of appBackupScreen
+ ; Check how many columns are readable with valid data
+ ; Inputs  : none
+ ; Destroys: af bc hl plotSScreen[384:576]
+ ; Outputs : a contains number of valid columns (typically 12, 15, or 16; emulators often give 32)
  .define USES_PLOT
  ; copy one column of counter to plotSScreen+384, then a column of blanks to plotSScreen+448
- ld a,0
+ xor a
  ld b,64
  ld hl,plotSScreen+384
  push hl
@@ -647,7 +686,7 @@ DispMsg:
  ; automatically increments test result counter and stores result
  ; this is spaghetti code now, it used to fancily display the result
  jr z,DispTestPass
-; ld a,0
+; xor a
  ld a,(Result)
  DispMsgStatus:
  jp PutAInResults
@@ -660,7 +699,7 @@ DispTestPass:
  ld a,1
  DispTestPassWithResult:
  push af
- ld a,0
+ xor a
  ld (Result),a
  pop af
  jp PutAInResults
@@ -674,7 +713,7 @@ PutAInResults:
  ld (hl),a
  inc de
  ld (ResultsPtr),de
- ld a,0
+ xor a
  ld (Result),a
  ret
 
@@ -738,7 +777,7 @@ ListExit:
  ; this used to set graphflags on certain platforms, but we do that later now
  ret
 ListEmpty: ; should never be called ; WILL KILL VAT ON 86 RIGHT NOW
- ld a,0
+ xor a
  push de
  .ifndef TI82
   bcall(_setxxop1)
